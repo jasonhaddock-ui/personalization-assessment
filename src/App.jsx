@@ -303,11 +303,12 @@ function parseReport(text) {
 
 // ─── Streaming API call ───────────────────────────────────────────────────────
 async function streamCall(prompt, onChunk, maxTokens = 1000) {
-  const res = await fetch("/api/proxy", {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
     },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
@@ -354,6 +355,13 @@ export default function App() {
   const [loadingFocus, setLoadingFocus] = useState(false);
   const [loadingFocusIdx, setLoadingFocusIdx] = useState(-1);
   const topRef = useRef(null);
+  const reportRef = useRef(null);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState("");
+  const [captureError, setCaptureError] = useState("");
+  const [captureSubmitting, setCaptureSubmitting] = useState(false);
+  const [captureSubmitted, setCaptureSubmitted] = useState(false);
 
   const loading = loadingNarrative || loadingFocus;
 
@@ -396,6 +404,71 @@ export default function App() {
     }
   }
 
+
+  async function handleCaptureSubmit(e) {
+    e.preventDefault();
+    if (!firstName.trim() || !lastName.trim() || !email.trim()) {
+      setCaptureError("Please fill in all fields.");
+      return;
+    }
+    setCaptureError("");
+    setCaptureSubmitting(true);
+    try {
+      if (!window.html2canvas) {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement("script");
+          s.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+          s.onload = resolve; s.onerror = reject;
+          document.head.appendChild(s);
+        });
+      }
+      if (!window.jspdf) {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement("script");
+          s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+          s.onload = resolve; s.onerror = reject;
+          document.head.appendChild(s);
+        });
+      }
+      const element = reportRef.current;
+      const canvas = await window.html2canvas(element, { scale: 1.5, useCORS: true, logging: false, backgroundColor: "#f4f2ee" });
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 10;
+      const contentWidth = pageWidth - margin * 2;
+      const imgHeight = (canvas.height * contentWidth) / canvas.width;
+      let yOffset = 0;
+      let firstPage = true;
+      while (yOffset < imgHeight) {
+        if (!firstPage) pdf.addPage();
+        const sliceHeight = Math.min(pageHeight - margin * 2, imgHeight - yOffset);
+        const srcY = (yOffset / imgHeight) * canvas.height;
+        const srcH = (sliceHeight / imgHeight) * canvas.height;
+        const sliceCanvas = document.createElement("canvas");
+        sliceCanvas.width = canvas.width;
+        sliceCanvas.height = srcH;
+        const ctx = sliceCanvas.getContext("2d");
+        ctx.drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
+        const imgData = sliceCanvas.toDataURL("image/jpeg", 0.92);
+        pdf.addImage(imgData, "JPEG", margin, margin, contentWidth, sliceHeight);
+        yOffset += sliceHeight;
+        firstPage = false;
+      }
+      pdf.save("Personalization-Readiness-Report-" + stage(sc.overall).label + ".pdf");
+    } catch (pdfErr) { console.error("PDF generation failed:", pdfErr); }
+    try {
+      await fetch("/api/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ firstName: firstName.trim(), lastName: lastName.trim(), email: email.trim(), maturityTier: stage(sc.overall).label, overallScore: sc.overall }),
+      });
+    } catch (mcErr) { console.error("Mailchimp error:", mcErr); }
+    setCaptureSubmitting(false);
+    setCaptureSubmitted(true);
+  }
+
   function pick(i) {
     const next = [...ans]; next[cur] = i; setAns(next);
     if (cur < 19) setTimeout(() => setCur(c => c + 1), 240);
@@ -406,6 +479,7 @@ export default function App() {
     setStep("intro"); setCur(0); setAns(Array(20).fill(null));
     setSc(null); setFi([]); setNarrative(""); setFocusRecs([]);
     setLoadingNarrative(false); setLoadingFocus(false); setLoadingFocusIdx(-1);
+    setFirstName(""); setLastName(""); setEmail(""); setCaptureError(""); setCaptureSubmitting(false); setCaptureSubmitted(false);
   }
 
   // ── INTRO ──────────────────────────────────────────────────────────────────
@@ -515,6 +589,7 @@ export default function App() {
 
   return (
     <div style={{ ...BASE, padding: "32px 20px 0" }} ref={topRef}>
+      <div ref={reportRef}>
       <div style={{ maxWidth: 760, margin: "0 auto" }}>
 
         {/* Header */}
@@ -703,8 +778,32 @@ export default function App() {
           </div>
         )}
 
-        {/* Final CTA */}
-        {!loading && narrative.length > 0 && (
+        {/* Email capture */}
+        {!loading && narrative.length > 0 && !captureSubmitted && (
+          <div style={{ background: "#fff", border: "1px solid #e8edf2", borderRadius: 16, padding: "36px 32px", marginBottom: 16 }}>
+            <div style={{ fontFamily: SN, fontSize: 10, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", color: "#2B6CB0", marginBottom: 12 }}>Download Your Report</div>
+            <h2 style={{ fontFamily: "Georgia,serif", fontSize: "clamp(18px,3vw,24px)", fontWeight: 700, lineHeight: 1.3, color: "#0f1923", margin: "0 0 12px" }}>
+              Save your personalization readiness report as a PDF.
+            </h2>
+            <p style={{ fontFamily: SN, fontSize: 14, lineHeight: 1.7, color: "#718096", margin: "0 0 24px" }}>
+              Enter your name and email to download the full report. We will also send you a copy.
+            </p>
+            <form onSubmit={handleCaptureSubmit} style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 420 }}>
+              <div style={{ display: "flex", gap: 12 }}>
+                <input value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="First name" style={{ flex: 1, border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 14px", fontSize: 14, fontFamily: SN, outline: "none" }} />
+                <input value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Last name" style={{ flex: 1, border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 14px", fontSize: 14, fontFamily: SN, outline: "none" }} />
+              </div>
+              <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Work email" type="email" style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 14px", fontSize: 14, fontFamily: SN, outline: "none" }} />
+              {captureError && <p style={{ color: "#C53030", fontFamily: SN, fontSize: 13, margin: 0 }}>{captureError}</p>}
+              <button type="submit" disabled={captureSubmitting} style={{ background: "#1a365d", color: "#fff", border: "none", borderRadius: 8, padding: "12px 28px", fontSize: 14, fontFamily: SN, fontWeight: 600, cursor: captureSubmitting ? "wait" : "pointer", alignSelf: "flex-start" }}>
+                {captureSubmitting ? "Generating PDF..." : "Download My Report"}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* Final CTA -- shown after email submitted */}
+        {!loading && narrative.length > 0 && captureSubmitted && (
           <>
             <div style={{ background: "#0f2744", border: "1px solid #1a3a5c", borderRadius: 16, padding: "40px 36px", marginBottom: 16 }}>
               <div style={{ fontFamily: SN, fontSize: 10, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", color: "#90cdf4", marginBottom: 16 }}>
@@ -730,6 +829,7 @@ export default function App() {
             </div>
           </>
         )}
+      </div>
       </div>
     </div>
   );
