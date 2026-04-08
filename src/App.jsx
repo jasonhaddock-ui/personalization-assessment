@@ -303,12 +303,11 @@ function parseReport(text) {
 
 // ─── Streaming API call ───────────────────────────────────────────────────────
 async function streamCall(prompt, onChunk, maxTokens = 1000) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetch("/api/proxy", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
     },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
