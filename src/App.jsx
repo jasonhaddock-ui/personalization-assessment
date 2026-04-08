@@ -719,7 +719,7 @@ export default function App() {
               <p style={{ fontFamily: "Georgia,serif", fontSize: 15, lineHeight: 1.9, color: "#cbd5e0", margin: "0 0 28px" }}>
                 I bring 15 years of building personalization programs and 21 years in digital marketing -- inside real organizations, not just in theory. I have diagnosed what breaks these programs and know what the path from where you are now to a functioning program actually looks like. A conversation costs nothing. A poorly sequenced build costs months.
               </p>
-              <button onClick={() => window.open("Yhttps://calendly.com/jason-haddock-hbej/30min", "_blank")} style={{ background: "#2B6CB0", color: "#fff", border: "none", borderRadius: 8, padding: "15px 32px", fontSize: 15, fontFamily: SN, fontWeight: 600, cursor: "pointer" }}>
+              <button onClick={() => window.open("https://calendly.com/jason-haddock-hbej/30min", "_blank")} style={{ background: "#2B6CB0", color: "#fff", border: "none", borderRadius: 8, padding: "15px 32px", fontSize: 15, fontFamily: SN, fontWeight: 600, cursor: "pointer" }}>
                 Let's Build This Together
               </button>
             </div>
